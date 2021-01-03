@@ -93,17 +93,17 @@ func main() {
 		}
 		dn := strings.ToLower(certificate.Subject.String())
 		if !strings.HasPrefix(dn, fmt.Sprintf("cn=%s,", flags.hostname)) {
-			p.SetState(plugin.ERROR, "incorrect certificate CN")
+			p.SetState(plugin.CRITICAL, "incorrect certificate CN")
 			return
 		}
 	} else if !findHostname(certificate, flags.hostname) {
-		p.SetState(plugin.ERROR, "host name not found in SAN domain names")
+		p.SetState(plugin.CRITICAL, "host name not found in SAN domain names")
 		return
 	}
 	timeLeft := certificate.NotAfter.Sub(time.Now())
 	tlDays := int((timeLeft + 86399*time.Second) / (24 * time.Hour))
 	if flags.crit > 0 && tlDays <= flags.crit {
-		p.SetState(plugin.ERROR, fmt.Sprintf("certificate will expire in %d days (<= %d)", tlDays, flags.crit))
+		p.SetState(plugin.CRITICAL, fmt.Sprintf("certificate will expire in %d days (<= %d)", tlDays, flags.crit))
 	} else if flags.warn > 0 && tlDays <= flags.warn {
 		p.SetState(plugin.WARNING, fmt.Sprintf("certificate will expire in %d days (<= %d)", tlDays, flags.warn))
 	} else {
