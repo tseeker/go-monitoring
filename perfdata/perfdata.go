@@ -1,3 +1,5 @@
+// Package `perfdata` provides representations for a monitoring plugin's
+// performance data.
 package perfdata
 
 import (
@@ -6,6 +8,7 @@ import (
 	"strings"
 )
 
+// Units of measurement, which may be used to qualify the performance data.
 type UnitOfMeasurement int
 
 const (
@@ -24,36 +27,47 @@ func (u UnitOfMeasurement) String() string {
 	return [...]string{"", "s", "%", "B", "KB", "MB", "GB", "TB", "c"}[u]
 }
 
-type PerfDataBits int
+// Flags indicating which elements of performance data have been set.
+type perfDataBits int
 
 const (
-	PDAT_WARN PerfDataBits = 1 << iota
+	PDAT_WARN perfDataBits = 1 << iota
 	PDAT_CRIT
 	PDAT_MIN
 	PDAT_MAX
 )
 
+// Regexps used to check values and ranges in performance data records.
 var (
-	valueCheck    = regexp.MustCompile(`^-?(0(\.\d*)?|[1-9]\d*(\.\d*)?|\.\d+)$`)
-	rangeMinCheck = regexp.MustCompile(`^-?(0(\.\d*)?|[1-9]\d*(\.\d*)?|\.\d+)$|^~$`)
+	// Common value check regexp
+	vcRegexp = `^-?(0(\.\d*)?|[1-9]\d*(\.\d*)?|\.\d+)$`
+	// Compiled value check regexp
+	valueCheck = regexp.MustCompile(vcRegexp)
+	// Compiled range min value check
+	rangeMinCheck = regexp.MustCompile(vcRegexp + `|^~$`)
 )
 
+// Performance data range
 type PerfDataRange struct {
 	start  string
 	end    string
 	inside bool
 }
 
+// Creates a performance data range from -inf to 0 and from the specified
+// value to +inf.
 func PDRMax(max string) *PerfDataRange {
 	if !valueCheck.MatchString(max) {
 		panic("invalid performance data range maximum value")
 	}
-	r := new(PerfDataRange)
+	r := &PerfDataRange{}
 	r.start = "0"
 	r.end = max
 	return r
 }
 
+// Creates a performance data range from -inf to the specified minimal value
+// and from the specified maximal value to +inf.
 func PDRMinMax(min, max string) *PerfDataRange {
 	if !valueCheck.MatchString(max) {
 		panic("invalid performance data range maximum value")
@@ -61,18 +75,21 @@ func PDRMinMax(min, max string) *PerfDataRange {
 	if !rangeMinCheck.MatchString(min) {
 		panic("invalid performance data range minimum value")
 	}
-	r := new(PerfDataRange)
+	r := &PerfDataRange{}
 	r.start = min
 	r.end = max
 	return r
 }
 
+// Inverts the range.
 func (r *PerfDataRange) Inside() *PerfDataRange {
 	r.inside = true
 	return r
 }
 
-func (r PerfDataRange) String() string {
+// Generates the range's string representation so it can be sent to the
+// monitoring system.
+func (r *PerfDataRange) String() string {
 	var start, inside string
 	if r.start == "" {
 		start = "~"
@@ -89,20 +106,23 @@ func (r PerfDataRange) String() string {
 	return fmt.Sprintf("%s%s:%s", inside, start, r.end)
 }
 
+// Performance data, including a label, units, a value, warning/critical
+// ranges and min/max boundaries.
 type PerfData struct {
 	Label      string
 	units      UnitOfMeasurement
-	bits       PerfDataBits
+	bits       perfDataBits
 	value      string
 	warn, crit PerfDataRange
 	min, max   string
 }
 
-func New(label string, units UnitOfMeasurement, value string) PerfData {
+// Create performance data using the specified label and units.
+func New(label string, units UnitOfMeasurement, value string) *PerfData {
 	if value != "" && !valueCheck.MatchString(value) {
 		panic("invalid value")
 	}
-	r := PerfData{}
+	r := &PerfData{}
 	r.Label = label
 	r.units = units
 	if value == "" {
@@ -113,16 +133,19 @@ func New(label string, units UnitOfMeasurement, value string) PerfData {
 	return r
 }
 
+// Set the warning range for the performance data record.
 func (d *PerfData) SetWarn(r *PerfDataRange) {
 	d.warn = *r
 	d.bits = d.bits | PDAT_WARN
 }
 
+// Set the critical range for the performance data record.
 func (d *PerfData) SetCrit(r *PerfDataRange) {
 	d.crit = *r
 	d.bits = d.bits | PDAT_CRIT
 }
 
+// Set the performance data's minimal value
 func (d *PerfData) SetMin(min string) {
 	if !valueCheck.MatchString(min) {
 		panic("invalid value")
@@ -131,6 +154,7 @@ func (d *PerfData) SetMin(min string) {
 	d.bits = d.bits | PDAT_MIN
 }
 
+// Set the performance data's maximal value.
 func (d *PerfData) SetMax(max string) {
 	if !valueCheck.MatchString(max) {
 		panic("invalid value")
@@ -139,7 +163,9 @@ func (d *PerfData) SetMax(max string) {
 	d.bits = d.bits | PDAT_MAX
 }
 
-func (d PerfData) String() string {
+// Converts performance data to a string which may be read by the monitoring
+// system.
+func (d *PerfData) String() string {
 	var sb strings.Builder
 	needsQuotes := strings.ContainsAny(d.Label, " '=\"")
 	if needsQuotes {

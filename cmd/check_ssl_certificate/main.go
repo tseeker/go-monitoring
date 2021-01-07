@@ -110,8 +110,7 @@ func main() {
 		p.SetState(plugin.OK, fmt.Sprintf("certificate will expire in %d days", tlDays))
 	}
 
-	var pdat perfdata.PerfData
-	pdat = perfdata.New("validity", perfdata.UOM_NONE, fmt.Sprintf("%d", tlDays))
+	pdat := perfdata.New("validity", perfdata.UOM_NONE, fmt.Sprintf("%d", tlDays))
 	if flags.crit > 0 {
 		pdat.SetCrit(perfdata.PDRMax(fmt.Sprint(flags.crit)))
 	}

@@ -33,7 +33,7 @@ type Plugin struct {
 	status    Status
 	message   string
 	extraText *list.List
-	perfData  map[string]perfdata.PerfData
+	perfData  map[string]*perfdata.PerfData
 }
 
 // `New` creates the plugin with `name` as its name and an unknown status.
@@ -42,7 +42,7 @@ func New(name string) *Plugin {
 	p.name = name
 	p.status = UNKNOWN
 	p.message = "no status set"
-	p.perfData = make(map[string]perfdata.PerfData)
+	p.perfData = make(map[string]*perfdata.PerfData)
 	return p
 }
 
@@ -72,7 +72,7 @@ func (p *Plugin) AddLines(lines []string) {
 // `AddPerfData` adds performance data described by `pd` to the output's
 // performance data. If two performance data records are added for the same
 // label, the program panics.
-func (p *Plugin) AddPerfData(pd perfdata.PerfData) {
+func (p *Plugin) AddPerfData(pd *perfdata.PerfData) {
 	_, exists := p.perfData[pd.Label]
 	if exists {
 		panic(fmt.Sprintf("duplicate performance data %s", pd.Label))
