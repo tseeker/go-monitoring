@@ -20,6 +20,7 @@ type programFlags struct {
 	warn         int
 	crit         int
 	ignoreCnOnly bool
+	extraNames   []string
 }
 
 type checkProgram struct {
@@ -29,7 +30,10 @@ type checkProgram struct {
 }
 
 func (flags *programFlags) parseArguments() {
-	var help bool
+	var (
+		names string
+		help  bool
+	)
 	golf.BoolVarP(&help, 'h', "help", false, "Display usage information")
 	golf.StringVarP(&flags.hostname, 'H', "hostname", "", "Host name to connect to.")
 	golf.IntVarP(&flags.port, 'P', "port", -1, "Port to connect to.")
@@ -39,10 +43,17 @@ func (flags *programFlags) parseArguments() {
 		"Validity threshold below which a critical state is issued, in days.")
 	golf.BoolVar(&flags.ignoreCnOnly, "ignore-cn-only", false,
 		"Do not issue warnings regarding certificates that do not use SANs at all.")
+	golf.StringVarP(&names, 'a', "additional-names", "",
+		"A comma-separated list of names that the certificate should also provide.")
 	golf.Parse()
 	if help {
 		golf.Usage()
 		os.Exit(0)
+	}
+	if names == "" {
+		flags.extraNames = make([]string, 0)
+	} else {
+		flags.extraNames = strings.Split(names, ",")
 	}
 }
 
@@ -93,32 +104,42 @@ func (program *checkProgram) getCertificate() error {
 	return nil
 }
 
-func findHostname(cert *x509.Certificate, hostname string) bool {
-	for _, name := range cert.DNSNames {
-		if strings.ToLower(name) == hostname {
+func (program *checkProgram) checkHostName(name string) bool {
+	for _, n := range program.certificate.DNSNames {
+		if strings.ToLower(n) == name {
 			return true
 		}
 	}
+	program.plugin.AddLine(fmt.Sprintf("missing DNS name %s in certificate", name))
 	return false
 }
 
-func (program *checkProgram) checkCertificateName() bool {
-	if len(program.certificate.DNSNames) == 0 {
-		if !program.ignoreCnOnly {
-			program.plugin.SetState(plugin.WARNING,
-				"certificate doesn't have SAN domain names")
-			return false
-		}
-		dn := strings.ToLower(program.certificate.Subject.String())
-		if !strings.HasPrefix(dn, fmt.Sprintf("cn=%s,", program.hostname)) {
-			program.plugin.SetState(plugin.CRITICAL, "incorrect certificate CN")
-			return false
-		}
-	} else if !findHostname(program.certificate, program.hostname) {
-		program.plugin.SetState(plugin.CRITICAL, "host name not found in SAN domain names")
+func (program *checkProgram) checkSANlessCertificate() bool {
+	if !program.ignoreCnOnly || len(program.extraNames) != 0 {
+		program.plugin.SetState(plugin.WARNING,
+			"certificate doesn't have SAN domain names")
+		return false
+	}
+	dn := strings.ToLower(program.certificate.Subject.String())
+	if !strings.HasPrefix(dn, fmt.Sprintf("cn=%s,", program.hostname)) {
+		program.plugin.SetState(plugin.CRITICAL, "incorrect certificate CN")
 		return false
 	}
 	return true
+}
+
+func (program *checkProgram) checkNames() bool {
+	if len(program.certificate.DNSNames) == 0 {
+		return program.checkSANlessCertificate()
+	}
+	ok := program.checkHostName(program.hostname)
+	for _, name := range program.extraNames {
+		ok = program.checkHostName(name) && ok
+	}
+	if !ok {
+		program.plugin.SetState(plugin.CRITICAL, "names missing from SAN domain names")
+	}
+	return ok
 }
 
 func (program *checkProgram) checkCertificateExpiry(tlDays int) (plugin.Status, string) {
@@ -154,7 +175,7 @@ func (program *checkProgram) runCheck() {
 	err := program.getCertificate()
 	if err != nil {
 		program.plugin.SetState(plugin.UNKNOWN, err.Error())
-	} else if program.checkCertificateName() {
+	} else if program.checkNames() {
 		timeLeft := program.certificate.NotAfter.Sub(time.Now())
 		tlDays := int((timeLeft + 86399*time.Second) / (24 * time.Hour))
 		program.plugin.SetState(program.checkCertificateExpiry(tlDays))
