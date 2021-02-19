@@ -14,21 +14,25 @@ import (
 	"github.com/karrick/golf"
 )
 
+// Command line flags that have been parsed.
 type programFlags struct {
-	hostname     string
-	port         int
-	warn         int
-	crit         int
-	ignoreCnOnly bool
-	extraNames   []string
+	hostname     string   // Main host name to connect to
+	port         int      // TCP port to connect to
+	warn         int      // Threshold for warning state (days)
+	crit         int      // Threshold for critical state (days)
+	ignoreCnOnly bool     // Do not warn about SAN-less certificates
+	extraNames   []string // Extra names the certificate should include
 }
 
+// Program data including configuration and runtime data.
 type checkProgram struct {
-	programFlags
-	plugin      *plugin.Plugin
-	certificate *x509.Certificate
+	programFlags                   // Flags from the command line
+	plugin       *plugin.Plugin    // Plugin output state
+	certificate  *x509.Certificate // X.509 certificate from the server
 }
 
+// Parse command line arguments and store their values. If the -h flag is present,
+// help will be displayed and the program will exit.
 func (flags *programFlags) parseArguments() {
 	var (
 		names string
@@ -57,6 +61,7 @@ func (flags *programFlags) parseArguments() {
 	}
 }
 
+// Initialise the monitoring check program.
 func newProgram() *checkProgram {
 	program := &checkProgram{
 		plugin: plugin.New("Certificate check"),
@@ -65,10 +70,13 @@ func newProgram() *checkProgram {
 	return program
 }
 
+// Terminate the monitoring check program.
 func (program *checkProgram) close() {
 	program.plugin.Done()
 }
 
+// Check the values that were specified from the command line. Returns true
+// if the arguments made sense.
 func (program *checkProgram) checkFlags() bool {
 	if program.hostname == "" {
 		program.plugin.SetState(plugin.UNKNOWN, "no hostname specified")
@@ -86,6 +94,8 @@ func (program *checkProgram) checkFlags() bool {
 	return true
 }
 
+// Connect to the remote host and obtain the certificate. Returns an error
+// if connecting or performing the TLS handshake fail.
 func (program *checkProgram) getCertificate() error {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
@@ -104,16 +114,6 @@ func (program *checkProgram) getCertificate() error {
 	return nil
 }
 
-func (program *checkProgram) checkHostName(name string) bool {
-	for _, n := range program.certificate.DNSNames {
-		if strings.ToLower(n) == name {
-			return true
-		}
-	}
-	program.plugin.AddLine(fmt.Sprintf("missing DNS name %s in certificate", name))
-	return false
-}
-
 func (program *checkProgram) checkSANlessCertificate() bool {
 	if !program.ignoreCnOnly || len(program.extraNames) != 0 {
 		program.plugin.SetState(plugin.WARNING,
@@ -128,6 +128,21 @@ func (program *checkProgram) checkSANlessCertificate() bool {
 	return true
 }
 
+// Checks whether a name is listed in the certificate's DNS names. If the name
+// cannot be found, a line will be added to the plugin output and false will
+// be returned.
+func (program *checkProgram) checkHostName(name string) bool {
+	for _, n := range program.certificate.DNSNames {
+		if strings.ToLower(n) == name {
+			return true
+		}
+	}
+	program.plugin.AddLine(fmt.Sprintf("missing DNS name %s in certificate", name))
+	return false
+}
+
+// Ensure the certificate matches the specified names. Returns false if it
+// doesn't.
 func (program *checkProgram) checkNames() bool {
 	if len(program.certificate.DNSNames) == 0 {
 		return program.checkSANlessCertificate()
@@ -142,6 +157,9 @@ func (program *checkProgram) checkNames() bool {
 	return ok
 }
 
+// Check a certificate's time to expiry agains the warning and critical
+// thresholds, returning a status code and description based on these
+// values.
 func (program *checkProgram) checkCertificateExpiry(tlDays int) (plugin.Status, string) {
 	var limitStr string
 	var state plugin.Status
@@ -160,6 +178,8 @@ func (program *checkProgram) checkCertificateExpiry(tlDays int) (plugin.Status, 
 	return state, statusString
 }
 
+// Set the plugin's performance data based on the time left before the
+// certificate expires and the thresholds.
 func (program *checkProgram) setPerfData(tlDays int) {
 	pdat := perfdata.New("validity", perfdata.UOM_NONE, fmt.Sprintf("%d", tlDays))
 	if program.crit > 0 {
@@ -171,6 +191,8 @@ func (program *checkProgram) setPerfData(tlDays int) {
 	program.plugin.AddPerfData(pdat)
 }
 
+// Run the check: fetch the certificate, check its names then check its time
+// to expiry and update the plugin's performance data.
 func (program *checkProgram) runCheck() {
 	err := program.getCertificate()
 	if err != nil {
