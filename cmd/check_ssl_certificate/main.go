@@ -161,6 +161,9 @@ func (program *checkProgram) checkNames() bool {
 // thresholds, returning a status code and description based on these
 // values.
 func (program *checkProgram) checkCertificateExpiry(tlDays int) (plugin.Status, string) {
+	if tlDays <= 0 {
+		return plugin.CRITICAL, "certificate expired"
+	}
 	var limitStr string
 	var state plugin.Status
 	if program.crit > 0 && tlDays <= program.crit {
