@@ -1,19 +1,22 @@
-// Package that represents a monitoring plugin.
+// Package plugin implements a helper that can be used to implement a Nagios,
+// Centreon, Icinga... service monitoring plugin.
 package plugin
 
 import (
 	"container/list"
 	"fmt"
-	"nocternity.net/monitoring/perfdata"
 	"os"
 	"strings"
+
+	"nocternity.net/monitoring/perfdata"
 )
 
-// Return status of the monitoring plugin. The corresponding integer
-// value will be used as the program's exit code, to be interpreted
-// by the monitoring system.
+// Status represents the return status of the monitoring plugin. The
+// corresponding integer value will be used as the program's exit code,
+// to be interpreted by the monitoring system.
 type Status int
 
+// Plugin exit statuses.
 const (
 	OK Status = iota
 	WARNING
@@ -21,13 +24,14 @@ const (
 	UNKNOWN
 )
 
+// String representations of the plugin statuses.
 func (s Status) String() string {
 	return [...]string{"OK", "WARNING", "ERROR", "UNKNOWN"}[s]
 }
 
-// Monitoring plugin state, including a name, return status and message,
-// additional lines of text, and performance data to be encoded in the
-// output.
+// Plugin represents the monitoring plugin's state, including its name,
+// return status and message, additional lines of text, and performance
+// data to be encoded in the output.
 type Plugin struct {
 	name      string
 	status    Status
@@ -36,7 +40,7 @@ type Plugin struct {
 	perfData  map[string]*perfdata.PerfData
 }
 
-// `New` creates the plugin with `name` as its name and an unknown status.
+// New creates the plugin with `name` as its name and an unknown status.
 func New(name string) *Plugin {
 	p := new(Plugin)
 	p.name = name
@@ -46,7 +50,7 @@ func New(name string) *Plugin {
 	return p
 }
 
-// `SetState` sets the plugin's output code to `status` and its message to
+// SetState sets the plugin's output code to `status` and its message to
 // the specified `message`. Any extra text is cleared.
 func (p *Plugin) SetState(status Status, message string) {
 	p.status = status
@@ -54,7 +58,7 @@ func (p *Plugin) SetState(status Status, message string) {
 	p.extraText = nil
 }
 
-// `AddLine` adds `line` to the extra output text.
+// AddLine adds the specified string to the extra output text buffer.
 func (p *Plugin) AddLine(line string) {
 	if p.extraText == nil {
 		p.extraText = list.New()
@@ -62,16 +66,16 @@ func (p *Plugin) AddLine(line string) {
 	p.extraText.PushBack(line)
 }
 
-// `AddLines` add the specified `lines` to the output text.
+// AddLines add the specified `lines` to the output text.
 func (p *Plugin) AddLines(lines []string) {
 	for _, line := range lines {
 		p.AddLine(line)
 	}
 }
 
-// `AddPerfData` adds performance data described by `pd` to the output's
-// performance data. If two performance data records are added for the same
-// label, the program panics.
+// AddPerfData adds performance data described by the "pd" argument to the
+// output's performance data. If two performance data records are added for
+// the same label, the program panics.
 func (p *Plugin) AddPerfData(pd *perfdata.PerfData) {
 	_, exists := p.perfData[pd.Label]
 	if exists {
@@ -80,7 +84,7 @@ func (p *Plugin) AddPerfData(pd *perfdata.PerfData) {
 	p.perfData[pd.Label] = pd
 }
 
-// `Done` generates the plugin's text output from its name, status, text data
+// Done generates the plugin's text output from its name, status, text data
 // and performance data, before exiting with the code corresponding to the
 // status.
 func (p *Plugin) Done() {
