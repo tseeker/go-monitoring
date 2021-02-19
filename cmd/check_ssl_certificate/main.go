@@ -3,42 +3,55 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"nocternity.net/monitoring/perfdata"
 	"nocternity.net/monitoring/plugin"
+
+	"github.com/karrick/golf"
 )
 
-type checkProgram struct {
+type programFlags struct {
 	hostname     string
 	port         int
 	warn         int
 	crit         int
 	ignoreCnOnly bool
-
-	certificate *x509.Certificate
-	plugin      *plugin.Plugin
 }
 
-func newProgram() (flags *checkProgram) {
-	flags = &checkProgram{
+type checkProgram struct {
+	programFlags
+	plugin      *plugin.Plugin
+	certificate *x509.Certificate
+}
+
+func (flags *programFlags) parseArguments() {
+	var help bool
+	golf.BoolVarP(&help, 'h', "help", false, "Display usage information")
+	golf.StringVarP(&flags.hostname, 'H', "hostname", "", "Host name to connect to.")
+	golf.IntVarP(&flags.port, 'P', "port", -1, "Port to connect to.")
+	golf.IntVarP(&flags.warn, 'W', "warning", -1,
+		"Validity threshold below which a warning state is issued, in days.")
+	golf.IntVarP(&flags.crit, 'C', "critical", -1,
+		"Validity threshold below which a critical state is issued, in days.")
+	golf.BoolVar(&flags.ignoreCnOnly, "ignore-cn-only", false,
+		"Do not issue warnings regarding certificates that do not use SANs at all.")
+	golf.Parse()
+	if help {
+		golf.Usage()
+		os.Exit(0)
+	}
+}
+
+func newProgram() *checkProgram {
+	program := &checkProgram{
 		plugin: plugin.New("Certificate check"),
 	}
-	flag.StringVar(&flags.hostname, "hostname", "", "Host name to connect to.")
-	flag.StringVar(&flags.hostname, "H", "", "Host name to connect to (shorthand).")
-	flag.IntVar(&flags.port, "port", -1, "Port to connect to.")
-	flag.IntVar(&flags.port, "P", -1, "Port to connect to (shorthand).")
-	flag.IntVar(&flags.warn, "warning", -1, "Validity threshold below which a warning state is issued, in days.")
-	flag.IntVar(&flags.warn, "W", -1, "Validity threshold below which a warning state is issued, in days (shorthand).")
-	flag.IntVar(&flags.crit, "critical", -1, "Validity threshold below which a critical state is issued, in days.")
-	flag.IntVar(&flags.crit, "C", -1, "Validity threshold below which a critical state is issued, in days (shorthand).")
-	flag.BoolVar(&flags.ignoreCnOnly, "ignore-cn-only", false,
-		"Do not issue warnings regarding certificates that do not use SANs at all.")
-	flag.Parse()
-	return
+	program.parseArguments()
+	return program
 }
 
 func (program *checkProgram) close() {
