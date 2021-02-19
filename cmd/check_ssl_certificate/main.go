@@ -132,7 +132,7 @@ var certGetters map[string]certGetter = map[string]certGetter{
 // Get a string that represents supported StartTLS protocols
 func listSupportedGetters() string {
 	sb := strings.Builder{}
-	for key, _ := range certGetters {
+	for key := range certGetters {
 		if sb.Len() != 0 {
 			sb.WriteString(", ")
 		}
