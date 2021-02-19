@@ -12,16 +12,21 @@ import (
 	"nocternity.net/monitoring/plugin"
 )
 
-type cliFlags struct {
+type checkProgram struct {
 	hostname     string
 	port         int
 	warn         int
 	crit         int
 	ignoreCnOnly bool
+
+	certificate *x509.Certificate
+	plugin      *plugin.Plugin
 }
 
-func handleCli(p *plugin.Plugin) (flags *cliFlags) {
-	flags = &cliFlags{}
+func newProgram() (flags *checkProgram) {
+	flags = &checkProgram{
+		plugin: plugin.New("Certificate check"),
+	}
 	flag.StringVar(&flags.hostname, "hostname", "", "Host name to connect to.")
 	flag.StringVar(&flags.hostname, "H", "", "Host name to connect to (shorthand).")
 	flag.IntVar(&flags.port, "port", -1, "Port to connect to.")
@@ -36,21 +41,43 @@ func handleCli(p *plugin.Plugin) (flags *cliFlags) {
 	return
 }
 
-func checkFlags(p *plugin.Plugin, flags *cliFlags) bool {
-	if flags.hostname == "" {
-		p.SetState(plugin.UNKNOWN, "no hostname specified")
+func (program *checkProgram) close() {
+	program.plugin.Done()
+}
+
+func (program *checkProgram) checkFlags() bool {
+	if program.hostname == "" {
+		program.plugin.SetState(plugin.UNKNOWN, "no hostname specified")
 		return false
 	}
-	if flags.port < 1 || flags.port > 65535 {
-		p.SetState(plugin.UNKNOWN, "invalid or missing port number")
+	if program.port < 1 || program.port > 65535 {
+		program.plugin.SetState(plugin.UNKNOWN, "invalid or missing port number")
 		return false
 	}
-	if flags.warn != -1 && flags.crit != -1 && flags.warn <= flags.crit {
-		p.SetState(plugin.UNKNOWN, "nonsensical thresholds")
+	if program.warn != -1 && program.crit != -1 && program.warn <= program.crit {
+		program.plugin.SetState(plugin.UNKNOWN, "nonsensical thresholds")
 		return false
 	}
-	flags.hostname = strings.ToLower(flags.hostname)
+	program.hostname = strings.ToLower(program.hostname)
 	return true
+}
+
+func (program *checkProgram) getCertificate() error {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS10,
+	}
+	connString := fmt.Sprintf("%s:%d", program.hostname, program.port)
+	conn, err := tls.Dial("tcp", connString, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("connection failed: %s", err.Error())
+	}
+	defer conn.Close()
+	if err := conn.Handshake(); err != nil {
+		return fmt.Errorf("handshake failed: %s", err.Error())
+	}
+	program.certificate = conn.ConnectionState().PeerCertificates[0]
+	return nil
 }
 
 func findHostname(cert *x509.Certificate, hostname string) bool {
@@ -62,60 +89,70 @@ func findHostname(cert *x509.Certificate, hostname string) bool {
 	return false
 }
 
-func main() {
-	p := plugin.New("Certificate check")
-	defer p.Done()
-	flags := handleCli(p)
-	if !checkFlags(p, flags) {
-		return
-	}
-
-	tls_cfg := &tls.Config{
-		InsecureSkipVerify: true,
-		MinVersion:         tls.VersionTLS10,
-	}
-	tls_conn, tls_err := tls.Dial("tcp", fmt.Sprintf("%s:%d", flags.hostname, flags.port), tls_cfg)
-	if tls_err != nil {
-		p.SetState(plugin.UNKNOWN, fmt.Sprintf("connection failed: %s", tls_err))
-		return
-	}
-	defer tls_conn.Close()
-	if hsk_err := tls_conn.Handshake(); hsk_err != nil {
-		p.SetState(plugin.UNKNOWN, fmt.Sprintf("handshake failed: %s", hsk_err))
-		return
-	}
-	certificate := tls_conn.ConnectionState().PeerCertificates[0]
-
-	if len(certificate.DNSNames) == 0 {
-		if !flags.ignoreCnOnly {
-			p.SetState(plugin.WARNING, "certificate doesn't have SAN domain names")
-			return
+func (program *checkProgram) checkCertificateName() bool {
+	if len(program.certificate.DNSNames) == 0 {
+		if !program.ignoreCnOnly {
+			program.plugin.SetState(plugin.WARNING,
+				"certificate doesn't have SAN domain names")
+			return false
 		}
-		dn := strings.ToLower(certificate.Subject.String())
-		if !strings.HasPrefix(dn, fmt.Sprintf("cn=%s,", flags.hostname)) {
-			p.SetState(plugin.CRITICAL, "incorrect certificate CN")
-			return
+		dn := strings.ToLower(program.certificate.Subject.String())
+		if !strings.HasPrefix(dn, fmt.Sprintf("cn=%s,", program.hostname)) {
+			program.plugin.SetState(plugin.CRITICAL, "incorrect certificate CN")
+			return false
 		}
-	} else if !findHostname(certificate, flags.hostname) {
-		p.SetState(plugin.CRITICAL, "host name not found in SAN domain names")
-		return
+	} else if !findHostname(program.certificate, program.hostname) {
+		program.plugin.SetState(plugin.CRITICAL, "host name not found in SAN domain names")
+		return false
 	}
-	timeLeft := certificate.NotAfter.Sub(time.Now())
-	tlDays := int((timeLeft + 86399*time.Second) / (24 * time.Hour))
-	if flags.crit > 0 && tlDays <= flags.crit {
-		p.SetState(plugin.CRITICAL, fmt.Sprintf("certificate will expire in %d days (<= %d)", tlDays, flags.crit))
-	} else if flags.warn > 0 && tlDays <= flags.warn {
-		p.SetState(plugin.WARNING, fmt.Sprintf("certificate will expire in %d days (<= %d)", tlDays, flags.warn))
+	return true
+}
+
+func (program *checkProgram) checkCertificateExpiry(tlDays int) (plugin.Status, string) {
+	var limitStr string
+	var state plugin.Status
+	if program.crit > 0 && tlDays <= program.crit {
+		limitStr = fmt.Sprintf(" (<= %d)", program.crit)
+		state = plugin.CRITICAL
+	} else if program.warn > 0 && tlDays <= program.warn {
+		limitStr = fmt.Sprintf(" (<= %d)", program.warn)
+		state = plugin.WARNING
 	} else {
-		p.SetState(plugin.OK, fmt.Sprintf("certificate will expire in %d days", tlDays))
+		limitStr = ""
+		state = plugin.OK
 	}
+	statusString := fmt.Sprintf("certificate will expire in %d days%s",
+		tlDays, limitStr)
+	return state, statusString
+}
 
+func (program *checkProgram) setPerfData(tlDays int) {
 	pdat := perfdata.New("validity", perfdata.UOM_NONE, fmt.Sprintf("%d", tlDays))
-	if flags.crit > 0 {
-		pdat.SetCrit(perfdata.PDRMax(fmt.Sprint(flags.crit)))
+	if program.crit > 0 {
+		pdat.SetCrit(perfdata.PDRMax(fmt.Sprint(program.crit)))
 	}
-	if flags.warn > 0 {
-		pdat.SetWarn(perfdata.PDRMax(fmt.Sprint(flags.warn)))
+	if program.warn > 0 {
+		pdat.SetWarn(perfdata.PDRMax(fmt.Sprint(program.warn)))
 	}
-	p.AddPerfData(pdat)
+	program.plugin.AddPerfData(pdat)
+}
+
+func (program *checkProgram) runCheck() {
+	err := program.getCertificate()
+	if err != nil {
+		program.plugin.SetState(plugin.UNKNOWN, err.Error())
+	} else if program.checkCertificateName() {
+		timeLeft := program.certificate.NotAfter.Sub(time.Now())
+		tlDays := int((timeLeft + 86399*time.Second) / (24 * time.Hour))
+		program.plugin.SetState(program.checkCertificateExpiry(tlDays))
+		program.setPerfData(tlDays)
+	}
+}
+
+func main() {
+	program := newProgram()
+	defer program.close()
+	if program.checkFlags() {
+		program.runCheck()
+	}
 }
