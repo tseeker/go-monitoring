@@ -51,11 +51,10 @@ func New(name string) *Plugin {
 }
 
 // SetState sets the plugin's output code to `status` and its message to
-// the specified `message`. Any extra text is cleared.
+// the specified `message`.
 func (p *Plugin) SetState(status Status, message string) {
 	p.status = status
 	p.message = message
-	p.extraText = nil
 }
 
 // AddLine adds the specified string to the extra output text buffer.
