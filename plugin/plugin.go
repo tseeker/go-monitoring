@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"nocternity.net/monitoring/perfdata"
+	"nocternity.net/go/monitoring/perfdata"
 )
 
 // Status represents the return status of the monitoring plugin. The

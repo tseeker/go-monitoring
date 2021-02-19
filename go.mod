@@ -1,4 +1,4 @@
-module nocternity.net/monitoring
+module nocternity.net/go/monitoring
 
 go 1.15
 

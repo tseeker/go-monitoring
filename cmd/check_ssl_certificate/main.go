@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"nocternity.net/monitoring/perfdata"
-	"nocternity.net/monitoring/plugin"
+	"nocternity.net/go/monitoring/perfdata"
+	"nocternity.net/go/monitoring/plugin"
 
 	"github.com/karrick/golf"
 )
