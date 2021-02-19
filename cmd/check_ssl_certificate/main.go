@@ -129,6 +129,18 @@ var certGetters map[string]certGetter = map[string]certGetter{
 	"sieve": &sieveGetter{},
 }
 
+// Get a string that represents supported StartTLS protocols
+func listSupportedGetters() string {
+	sb := strings.Builder{}
+	for key, _ := range certGetters {
+		if sb.Len() != 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(key)
+	}
+	return sb.String()
+}
+
 //--------------------------------------------------------------------------------------------------------
 
 // Command line flags that have been parsed.
@@ -169,7 +181,10 @@ func (flags *programFlags) parseArguments() {
 	golf.StringVarP(&names, 'a', "additional-names", "",
 		"A comma-separated list of names that the certificate should also provide.")
 	golf.StringVarP(&flags.startTLS, 's', "start-tls", "",
-		"Protocol to use before requesting a switch to TLS. Supported protocols: smtp.")
+		fmt.Sprintf(
+			"Protocol to use before requesting a switch to TLS. "+
+				"Supported protocols: %s.",
+			listSupportedGetters()))
 	golf.Parse()
 	if help {
 		golf.Usage()
