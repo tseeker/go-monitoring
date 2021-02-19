@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"net/textproto"
@@ -38,7 +40,7 @@ func (f fullTLSGetter) getCertificate(tlsConfig *tls.Config, address string) (*x
 	return conn.ConnectionState().PeerCertificates[0], nil
 }
 
-// SMTP STARTTLS getter
+// SMTP+STARTTLS certificate getter
 type smtpGetter struct{}
 
 func (f smtpGetter) cmd(tcon *textproto.Conn, expectCode int, text string) (int, string, error) {
@@ -74,10 +76,57 @@ func (f smtpGetter) getCertificate(tlsConfig *tls.Config, address string) (*x509
 	return t.ConnectionState().PeerCertificates[0], nil
 }
 
+// ManageSieve STARTTLS certificate getter
+type sieveGetter struct{}
+
+func (f sieveGetter) waitOK(conn net.Conn) error {
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "OK") {
+			return nil
+		}
+		if strings.HasPrefix(line, "NO ") {
+			return errors.New(line[3:])
+		}
+		if strings.HasPrefix(line, "BYE ") {
+			return errors.New(line[4:])
+		}
+	}
+	return scanner.Err()
+}
+
+func (f sieveGetter) runCmd(conn net.Conn, cmd string) error {
+	if _, err := fmt.Fprintf(conn, "%s\r\n", cmd); err != nil {
+		return err
+	}
+	return f.waitOK(conn)
+}
+
+func (f sieveGetter) getCertificate(tlsConfig *tls.Config, address string) (*x509.Certificate, error) {
+	conn, err := net.Dial("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	if err := f.waitOK(conn); err != nil {
+		return nil, err
+	}
+	if err := f.runCmd(conn, "STARTTLS"); err != nil {
+		return nil, err
+	}
+	t := tls.Client(conn, tlsConfig)
+	if err := t.Handshake(); err != nil {
+		return nil, err
+	}
+	return t.ConnectionState().PeerCertificates[0], nil
+}
+
 // Supported StartTLS protocols
 var certGetters map[string]certGetter = map[string]certGetter{
-	"":     fullTLSGetter{},
-	"smtp": &smtpGetter{},
+	"":      fullTLSGetter{},
+	"smtp":  &smtpGetter{},
+	"sieve": &sieveGetter{},
 }
 
 //--------------------------------------------------------------------------------------------------------
