@@ -58,17 +58,17 @@ func (p *Plugin) SetState(status Status, message string) {
 }
 
 // AddLine adds the specified string to the extra output text buffer.
-func (p *Plugin) AddLine(line string) {
+func (p *Plugin) AddLine(format string, data ...interface{}) {
 	if p.extraText == nil {
 		p.extraText = list.New()
 	}
-	p.extraText.PushBack(line)
+	p.extraText.PushBack(fmt.Sprintf(format, data...))
 }
 
 // AddLines add the specified `lines` to the output text.
 func (p *Plugin) AddLines(lines []string) {
 	for _, line := range lines {
-		p.AddLine(line)
+		p.AddLine("%s", line)
 	}
 }
 
