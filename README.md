@@ -33,3 +33,19 @@ supports the following command-line flags:
   that the certificate should also have.
 * `-s protocol`/`--start-tls protocol`: protocol to use before requesting a
   switch to TLS. Supported protocols: `smtp`, `sieve`.
+
+  ### DNS zone serials
+
+  The `check_zone_serial` plugin can be used to check that the version of a
+  zone served by a DNS is up-to-date compared to the same zone served by
+  another, "reference" DNS. It supports the following command-line flags:
+
+* `-H name`/`--hostname name`: the host name or address of the server to
+  check.
+* `-P port`/`--port port`: the port to use on the server to check (defaults
+  to 53).
+* `-z zone`: the zone to check.
+* `-r name`/`--rs-hostname name`: the host name or address of the reference
+  server.
+* `-p port`/`--rs-port port`: the port to use on the reference server
+  (defaults to 53).
