@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"reflect"
 	"strings"
@@ -31,7 +32,7 @@ type (
 // Query a zone's SOA record through a given DNS and return the response using the channel.
 func queryZoneSOA(dnsq *dns.Msg, hostname string, port int, output responseChannel) {
 	dnsc := new(dns.Client)
-	in, rtt, err := dnsc.Exchange(dnsq, fmt.Sprintf("%s:%d", hostname, port))
+	in, rtt, err := dnsc.Exchange(dnsq, net.JoinHostPort(hostname, fmt.Sprintf("%d", port)))
 	output <- queryResponse{
 		data: in,
 		rtt:  rtt,
