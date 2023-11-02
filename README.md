@@ -34,7 +34,7 @@ supports the following command-line flags:
 * `-s protocol`/`--start-tls protocol`: protocol to use before requesting a
   switch to TLS. Supported protocols: `smtp`, `sieve`.
 
-  ### DNS zone serials
+### DNS zone serials
 
   The `check_zone_serial` plugin can be used to check that the version of a
   zone served by a DNS is up-to-date compared to the same zone served by
